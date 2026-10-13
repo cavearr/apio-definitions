@@ -22,7 +22,15 @@ defaults:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # -- Measurement branch on a fork: the same test on the three platforms,
+    # -- every example even after a failure (KEEP_GOING in test_examples.py).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      KEEP_GOING: "1"
 
     steps:
       - name: Checkout this repo

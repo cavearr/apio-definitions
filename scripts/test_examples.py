@@ -49,6 +49,11 @@ def read_file_lines(file: Union[str, Path]) -> List[str]:
     return lines
 
 
+# -- With KEEP_GOING set, failed commands are listed here instead of
+# -- stopping the run at the first one.
+FAILURES: List[str] = []
+
+
 def run_cmd(
     cmd: List[str],
 ) -> CompletedProcess:
@@ -65,6 +70,9 @@ def run_cmd(
         print(f"Command failed: {result.returncode}")
         print(f"STDOUT: {result.stdout}")
         print(f"STDERR: {result.stderr}")
+        if os.environ.get("KEEP_GOING"):
+            FAILURES.append(f"{os.getcwd()}: {' '.join(cmd)} -> {result.returncode}")
+            return result
         sys.exit(1)
     return result
 
@@ -301,6 +309,13 @@ def main() -> None:
         assert board_dir.is_dir(), f"Board dir is not a dir: {board_dir}"
         # -- This may call chdir().
         test_board(board_name, apio_board_defs)
+
+    if FAILURES:
+        print()
+        print(f"{len(FAILURES)} failed commands:")
+        for failure in FAILURES:
+            print(f"FAILED: {failure}")
+        sys.exit(1)
 
     print()
     print("Test completed OK.")
