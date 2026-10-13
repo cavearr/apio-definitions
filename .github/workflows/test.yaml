@@ -36,6 +36,11 @@ jobs:
       PYTHONUTF8: "1"
 
     steps:
+      # Keep the examples' LF line endings on Windows, as verible checks them.
+      - name: Disable line endings conversion
+        run: |
+          git config --global core.autocrlf false
+
       - name: Checkout this repo
         uses: actions/checkout@v4
 
