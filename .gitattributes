@@ -1,0 +1,2 @@
+# Keep the bytes of the test files, CRLF included, on every OS.
+repro/* -text

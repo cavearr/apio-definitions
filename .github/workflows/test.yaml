@@ -1,119 +1,48 @@
 name: test
 
+# Measurement branch: verible-verilog-format of apio 1.7 (tools-verible
+# 2026-09-20) on small CRLF and LF files, with apio's flags, on each OS.
+
 on:
-  # Run on each commit to this repo.
   push:
-
-  # Run on pull requests.
-  pull_request:
-    branches:
-      - main
-
-  # Daily at 10AM UTC
-  schedule:
-    - cron: "0 10 * * *"
-
-  # Allow manual triggers.
-  workflow_dispatch:
 
 defaults:
   run:
-    shell: bash -x {0}
+    shell: bash
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  repro:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86-64
+          - os: macos-latest
+            platform: darwin-arm64
+          - os: windows-latest
+            platform: windows-amd64
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout this repo
         uses: actions/checkout@v4
 
-      - name: Install the latest python
-        uses: actions/setup-python@v5
-
-      - name: Show python version
+      - name: Get verible
         run: |
-          python --version
+          curl -sSfL -o verible.tgz https://github.com/FPGAwars/tools-verible/releases/download/2026-09-20/apio-verible-${{ matrix.platform }}-20260920.tgz
+          mkdir verible
+          tar -xzf verible.tgz -C verible
+          verible/bin/verible-verilog-format --version
 
-      - name: Install latest apio dev
+      - name: Format the test files
         run: |
-          pip install --force-reinstall -U \ git+https://github.com/fpgawars/apio.git
-          apio packages install
-          apio info system
-
-      - name: Get apio 'definitions' package dir
-        run: |
-          apio api get-system --output ./_apio_api_system.json
-          cat -n ./_apio_api_system.json
-          apio_packages_dir=$(jq -r '.system["apio-packages-dir"]' ./_apio_api_system.json)
-          echo "APIO_PACKAGES_DIR=$apio_packages_dir" >> $GITHUB_ENV
-          apio_definitions_dir="${apio_packages_dir}/definitions"
-          echo "APIO_DEFINITIONS_DIR=${apio_definitions_dir}" >> $GITHUB_ENV
-
-      # Overwrite the definitions in the installed apio package with the ones
-      # from this repo.
-      - name: Patch apio definitions
-        run: |
-          ls -al $APIO_DEFINITIONS_DIR
-          cp -rf ./definitions/* $APIO_DEFINITIONS_DIR
-          ls -al $APIO_PACKAGES_DIR
-
-      # Copy the common examples files to the examples.
-      - name: Apply common example files
-        run: |
-          python ./scripts/copy_common_examples_files.py
-
-      # Overwrite the examples in the installed apio package with the ones
-      # from this repo.
-      - name: Patch apio with new definitions
-        run: |
-          ls -al $APIO_DEFINITIONS_DIR
-          cp -rf ./definitions/* $APIO_DEFINITIONS_DIR
-          ls -al $APIO_PACKAGES_DIR
-
-      - name: Patch apio with new examples
-        run: |
-          ls -al $APIO_DEFINITIONS_DIR
-          rm -rf $APIO_DEFINITIONS_DIR/examples
-          ls -al $APIO_DEFINITIONS_DIR
-          cp -r ./examples $APIO_DEFINITIONS_DIR
-          ls -al $APIO_DEFINITIONS_DIR
-
-      - name: Show the patched boards definitions
-        run: |
-          apio api get-boards
-
-      - name: Show the patched fpgas definitions
-        run: |
-          apio api get-fpgas
-
-      - name: Show the patched programmers definitions
-        run: |
-          apio api get-programmers
-
-      - name: Show the patched examples
-        run: |
-          apio api get-examples
-
-      - name: Fetch an apio example
-        run: |
-          mkdir test-project
-          cd test-project
-          apio examples fetch alhambra-ii/blinky
-
-      - name: Build the test apio example
-        run: |
-          cd test-project
-          apio build
-
-      # -- We want to make sure we test the patched ones in the apio package
-      # -- and not the ones the repo.
-      - name: Delete local examples
-        run: |
-          ls -al
-          rm -rf examples
-          ls -al
-
-      - name: Test the patched examples
-        run: |
-          python ./scripts/test_examples.py --examples-root $APIO_DEFINITIONS_DIR/examples
+          for f in repro/*.v; do
+            cp "$f" t.v
+            echo "== $f: $(od -An -c "$f" | tr -s ' ' | tr -d '\n')"
+            rc=0
+            verible/bin/verible-verilog-format --nofailsafe_success --inplace t.v > out.txt 2>&1 || rc=$?
+            echo "RESULT $f rc=$rc"
+            head -1 out.txt
+            echo "after: $(od -An -c t.v | tr -s ' ' | tr -d '\n')"
+          done
